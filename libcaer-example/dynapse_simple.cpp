@@ -105,29 +105,16 @@ int main(void) {
     printf(" Done.\n");
 
     printf("Configuring sram content...");
-	ifstream inputsram( SRAMCONTENT);
-	for (std::string line; getline(inputsram, line);) {
-		int i_dec = atoi(line.c_str());
-		caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-				DYNAPSE_CONFIG_CHIP_CONTENT, i_dec);
-	}
-	inputsram.close();
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U2, 0);
     printf(" Done.\n");
 
     printf("Configuring cam content...");
-    int counter = 0;
-	ifstream inputcam( CAMCONTENT);
-	for (std::string line; getline(inputcam, line);) {
-        if((counter % 1024) == 0){
-            printf(".");
-        }
-        counter++;
-		int i_dec = atoi(line.c_str());
-		caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-				DYNAPSE_CONFIG_CHIP_CONTENT, i_dec);
-	}
-	inputcam.close();
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U2, 0);
     printf(" Done.\n");
+
+
 
     // close config
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_RUN, false);
@@ -175,32 +162,15 @@ int main(void) {
 	inputbiases.close();
     printf(" Done.\n");
 
-	/*output one neuron per core, neuron id 0*/
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-					DYNAPSE_CONFIG_CHIP_CONTENT, 2048);
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-					DYNAPSE_CONFIG_CHIP_CONTENT, 0);
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-						DYNAPSE_CONFIG_CHIP_CONTENT, 2304);
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-					DYNAPSE_CONFIG_CHIP_CONTENT, 256);
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-							DYNAPSE_CONFIG_CHIP_CONTENT, 2560);
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-					DYNAPSE_CONFIG_CHIP_CONTENT, 512);
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-								DYNAPSE_CONFIG_CHIP_CONTENT, 2816);
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-					DYNAPSE_CONFIG_CHIP_CONTENT, 768);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MONITOR_NEU, 0, 0); // core 0 neu 0
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MONITOR_NEU, 1, 0); // core 1 neu 0
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MONITOR_NEU, 2, 0); // core 2 neu 0
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MONITOR_NEU, 3, 0); // core 3 neu 0
 
-
-	//send to FPGA neuron zero of core 3 as from coreID 15
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP,
-					DYNAPSE_CONFIG_CHIP_CONTENT, 977240176);
 
 	// Now let's get start getting some data from the device. We just loop, no notification needed.
 	caerDeviceDataStart(usb_handle, NULL, NULL, NULL, NULL, NULL);
-    printf("Start recorgind spikes...");
+        printf("Start recorgind spikes...");
     
 	while (!globalShutdown.load(memory_order_relaxed)) {
 		caerEventPacketContainer packetContainer = caerDeviceDataGet(
