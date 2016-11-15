@@ -15,7 +15,6 @@
 #define LOWPOWERBIASES "data/lowpowerbiases_values.txt"
 #define SRAMCONTENT "data/sram_content.txt"
 #define CAMCONTENT "data/cam_content.txt"
-#define CONFCHIPID 4
 
 using namespace std;
 
@@ -87,9 +86,9 @@ int main(void) {
 
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN,
 			true);
-	// chip id is CONFCHIPID
+	// chip id is DYNAPSE_CONFIG_DYNAPSE_U2 
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID,
-			CONFCHIPID);
+			DYNAPSE_CONFIG_DYNAPSE_U2);
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MUX,
 			DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE, true);
 
@@ -147,7 +146,7 @@ int main(void) {
 
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN, true);
 
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, CONFCHIPID);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
 
     // force chip to be enable even if aer is off
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MUX, DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE, true);
