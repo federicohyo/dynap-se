@@ -59,8 +59,6 @@ int main(void) {
 	}
 #endif
 
-	//caerLogLevelSet(CAER_LOG_DEBUG);	set debug level
-
 	// Open the communication with Dynap-se, give it a device ID of 1, and don't care about USB bus or SN restrictions.
 	caerDeviceHandle usb_handle = caerDeviceOpen(1, CAER_DEVICE_DYNAPSE, 0, 0,
 			NULL);
