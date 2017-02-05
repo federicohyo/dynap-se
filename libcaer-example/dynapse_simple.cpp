@@ -165,7 +165,7 @@ int main(void) {
 
 	// Now let's get start getting some data from the device. We just loop, no notification needed.
 	caerDeviceDataStart(usb_handle, NULL, NULL, NULL, NULL, NULL);
-        printf("Start recorgind spikes...");
+        printf("Start recording spikes...");
     
 	while (!globalShutdown.load(memory_order_relaxed)) {
 		caerEventPacketContainer packetContainer = caerDeviceDataGet(
