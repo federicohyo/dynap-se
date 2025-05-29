@@ -14,6 +14,8 @@
 #include <string>
 #include <cstring>
 
+#include <thread>
+
 // Networking
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -26,6 +28,8 @@ using namespace std;
 
 static atomic_bool globalShutdown(false);
 int serverSocket = -1, clientSocket = -1;
+int configSocket = -1, configClient = -1;
+
 
 static void globalShutdownSignalHandler(int signal) {
 	if (signal == SIGTERM || signal == SIGINT) {
@@ -99,9 +103,52 @@ void setupSocketServer(int port = 9001) {
 	printf("GUI connected.\n");
 }
 
+void setupConfigSocketServer(int port = 9002) {
+    configSocket = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in serverAddr{};
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = INADDR_ANY;
+    serverAddr.sin_port = htons(port);
+
+    bind(configSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
+    listen(configSocket, 1);
+    printf("Waiting for config client on port %d...\n", port);
+    configClient = accept(configSocket, nullptr, nullptr);
+    printf("Config client connected.\n");
+}
+
+
+
+void configHandler(caerDeviceHandle handle) {
+    char buffer[256];
+    while (!globalShutdown.load()) {
+        ssize_t len = recv(configClient, buffer, sizeof(buffer) - 1, 0);
+        if (len > 0) {
+            buffer[len] = '\0';
+            std::string command(buffer);
+            std::istringstream iss(command);
+            std::string token;
+            iss >> token;
+            if (token == "LOAD") {
+                std::string filename;
+                iss >> filename;
+                std::string path = "data/" + filename;
+                std::cout << "Reconfiguring with bias file: " << path << std::endl;
+                configureDevice(handle, path);
+            } else {
+                std::cerr << "Unknown command: " << command << std::endl;
+            }
+        }
+    }
+}
+
+
+
 void closeSockets() {
 	if (clientSocket != -1) close(clientSocket);
 	if (serverSocket != -1) close(serverSocket);
+	if (configClient != -1) close(configClient);
+	if (configSocket != -1) close(configSocket);
 }
 
 void readSpikes(caerDeviceHandle handle) {
@@ -186,8 +233,17 @@ int main() {
 		return EXIT_FAILURE;
 	}
 
-	setupSocketServer();      // ← Added TCP socket setup
-	readSpikes(usb_handle);   // ← Now sends spikes over TCP
+	setupConfigSocketServer();   // Accept config client FIRST
+	setupSocketServer();         // Then accept GUI stream
+	
+	// Launch config handler thread
+	std::thread configThread(configHandler, usb_handle);
+
+	readSpikes(usb_handle);     // Blocking loop
+	
+	globalShutdown.store(true);
+	configThread.join();
+
 	closeSockets();           // ← Clean up sockets
 
 	caerDeviceClose(&usb_handle);
