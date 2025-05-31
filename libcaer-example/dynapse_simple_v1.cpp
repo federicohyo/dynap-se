@@ -31,6 +31,8 @@ static atomic_bool globalShutdown(false);
 int serverSocket = -1, clientSocket = -1;
 int configSocket = -1, configClient = -1;
 
+// Biases currently loaded/applied → to allow SAVE later
+std::map<std::string, std::pair<int, int>> currentBiasValues;
 
 struct BiasFlags {
     uint32_t param;
@@ -38,6 +40,18 @@ struct BiasFlags {
     bool typeNormal;
     bool biasHigh;
 };
+
+static inline uint8_t coarseValueForward(uint8_t coarseRev) {
+    if (coarseRev == 0) return 0;
+    else if (coarseRev == 4) return 1;
+    else if (coarseRev == 2) return 2;
+    else if (coarseRev == 6) return 3;
+    else if (coarseRev == 1) return 4;
+    else if (coarseRev == 5) return 5;
+    else if (coarseRev == 3) return 6;
+    else if (coarseRev == 7) return 7;
+    else return 0;  // Fallback
+}
 
 std::map<std::string, uint32_t> parameterMap = {
     // CHIP
@@ -200,33 +214,117 @@ void setupSignalHandlers() {
 }
 
 bool loadBiases(caerDeviceHandle handle, const std::string &biasFile) {
-	ifstream input(biasFile);
-	if (!input.is_open()) {
-		cerr << "Error opening bias file: " << biasFile << endl;
-		return false;
-	}
+    std::ifstream input(biasFile);
+    if (!input.is_open()) {
+        std::cerr << "Error opening bias file: " << biasFile << std::endl;
+        return false;
+    }
 
-	for (string line; getline(input, line);) {
-		istringstream iss(line);
-		int biasValue;
-		if (!(iss >> biasValue)) {
-			cerr << "Invalid bias value: " << line << endl;
-			continue;
-		}
-		caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_CONTENT, biasValue);
-	}
-	input.close();
-	return true;
+    // Ensure bias generator is enabled
+    caerDeviceConfigSet(handle, DYNAPSE_CONFIG_MUX, DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE, true);
+
+    // Detect format
+    std::string firstLine;
+    if (!std::getline(input, firstLine)) {
+        std::cerr << "Empty bias file: " << biasFile << std::endl;
+        return false;
+    }
+
+    input.clear();
+    input.seekg(0, std::ios::beg);
+
+    std::istringstream issTest(firstLine);
+    int testInt;
+    if (issTest >> testInt) {
+        // Detected RAW → LOAD ONLY, do not touch currentBiasValues
+        std::cout << "Biases loaded in RAW format from " << biasFile << std::endl;
+
+        for (std::string line; std::getline(input, line);) {
+            std::istringstream issRaw(line);
+            uint32_t rawValue;
+            if (!(issRaw >> rawValue)) {
+                std::cerr << "Invalid RAW bias line: " << line << std::endl;
+                continue;
+            }
+
+            caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_CONTENT, rawValue);
+        }
+    }
+    else {
+        // Detected NAMED → LOAD AND FILL currentBiasValues
+        std::cout << "Biases loaded in NAMED format from " << biasFile << std::endl;
+        currentBiasValues.clear();
+
+        for (std::string line; std::getline(input, line);) {
+            std::istringstream issNamed(line);
+            std::string biasName;
+            int coarse, fine;
+
+            if (!(issNamed >> biasName >> coarse >> fine)) {
+                std::cerr << "Invalid NAMED bias line: " << line << std::endl;
+                continue;
+            }
+
+            auto it = biasFlagMap.find(biasName);
+            if (it == biasFlagMap.end()) {
+                std::cerr << "Unknown bias name: " << biasName << " → skipping." << std::endl;
+                continue;
+            }
+
+            uint32_t param = it->second.param;
+
+            caer_bias_dynapse biasStruct;
+            biasStruct.biasAddress = param;
+            biasStruct.coarseValue = coarse;
+            biasStruct.fineValue = fine;
+            biasStruct.enabled = true;
+            biasStruct.sexN = it->second.sexN;
+            biasStruct.typeNormal = it->second.typeNormal;
+            biasStruct.biasHigh = it->second.biasHigh;
+
+            uint32_t biasValue = caerBiasDynapseGenerate(biasStruct);
+            caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_CONTENT, biasValue);
+
+            currentBiasValues[biasName] = { coarse, fine };
+        }
+    }
+
+    input.close();
+    return true;
 }
+
+
+
+void saveBiases(const std::string &filename) {
+    std::ofstream output(filename);
+    if (!output.is_open()) {
+        std::cerr << "Error opening file for writing: " << filename << std::endl;
+        return;
+    }
+
+    for (const auto& entry : currentBiasValues) {
+        const std::string& biasName = entry.first;
+        int coarseReversed = entry.second.first;
+        int fine = entry.second.second;
+
+        // Important: convert reversed coarse back to "user" coarse
+        int coarse = coarseValueForward(coarseReversed);
+
+        output << biasName << " " << coarse << " " << fine << std::endl;
+    }
+
+    output.close();
+    std::cout << "Biases saved to " << filename << std::endl;
+}
+
+
 
 bool configureDevice(caerDeviceHandle handle, const std::string &biasFile) {
 	printf("Applying biases from %s...\n", biasFile.c_str());
+	
 	if (!loadBiases(handle, biasFile)) {
 		return false;
 	}
-
-	caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
-	caerDeviceConfigSet(handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U2, 0);
 
 	// Enable neuron monitors (example: neuron 0 from all cores)
 	for (int core = 0; core < 4; core++) {
@@ -324,8 +422,15 @@ void configHandler(caerDeviceHandle handle) {
                 uint32_t bias_value = caerBiasDynapseGenerate(biasStruct);
                 caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_CONTENT, bias_value);
 
+                currentBiasValues[bias_name] = { coarse, fine };
                 std::cout << "Bias applied." << std::endl;
-            } else if (token == "PARAM_SET") {
+            } else if (token == "SAVE") {
+                std::string filename;
+                iss >> filename;
+                std::string path = "data/" + filename;
+                cout << "Saving biases to file: " << path << endl;
+                saveBiases(path);
+            }else if (token == "PARAM_SET") {
                 std::string moduleStr, paramStr;
                 int value;
                 iss >> moduleStr >> paramStr >> value;
