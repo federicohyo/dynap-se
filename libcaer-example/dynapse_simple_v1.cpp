@@ -1,6 +1,6 @@
 /*
  * Mac os X: g++ -std=c++11  -O2 -o dynapse_simple_v1 dynapse_simple_v1.cpp -I/usr/local/include/ -L/usr/local/lib/ -lcaer
- * Linux: g++ -std=c++11 -O2 -o dynapse_simple dynapse_simple.cpp -lcaer
+ * Linux: g++ -std=c++11 -O2 -o dynapse_simple_v1 dynapse_simple_v1.cpp -lcaer
  */
  
 #include <libcaer/libcaer.h>
@@ -13,6 +13,7 @@
 #include <sstream>
 #include <string>
 #include <cstring>
+#include <map>
 
 #include <thread>
 
@@ -30,6 +31,152 @@ static atomic_bool globalShutdown(false);
 int serverSocket = -1, clientSocket = -1;
 int configSocket = -1, configClient = -1;
 
+
+struct BiasFlags {
+    uint32_t param;
+    bool sexN;
+    bool typeNormal;
+    bool biasHigh;
+};
+
+std::map<std::string, uint32_t> parameterMap = {
+    // CHIP
+    {"CHIP_RUN", DYNAPSE_CONFIG_CHIP_RUN},
+    {"CHIP_REQ_DELAY", DYNAPSE_CONFIG_CHIP_REQ_DELAY},
+    {"CHIP_REQ_EXTENSION", DYNAPSE_CONFIG_CHIP_REQ_EXTENSION},
+
+    // MUX
+    {"MUX_RUN", DYNAPSE_CONFIG_MUX_RUN},
+    {"MUX_TIMESTAMP_RUN", DYNAPSE_CONFIG_MUX_TIMESTAMP_RUN},
+    {"MUX_FORCE_CHIP_BIAS_ENABLE", DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE},
+
+    // AER
+    {"AER_RUN", DYNAPSE_CONFIG_AER_RUN},
+    {"AER_ACK_DELAY", DYNAPSE_CONFIG_AER_ACK_DELAY},
+    {"AER_ACK_EXTENSION", DYNAPSE_CONFIG_AER_ACK_EXTENSION},
+    {"AER_WAIT_ON_TRANSFER_STALL", DYNAPSE_CONFIG_AER_WAIT_ON_TRANSFER_STALL},
+
+};
+
+std::map<std::string, BiasFlags> biasFlagMap = {
+
+    // ------- C0 -------
+    {"C0_PULSE_PWLK_P", { DYNAPSE_CONFIG_BIAS_C0_PULSE_PWLK_P, false, true, true }},
+    {"C0_PS_WEIGHT_INH_S_N", { DYNAPSE_CONFIG_BIAS_C0_PS_WEIGHT_INH_S_N, true, true, true }},
+    {"C0_PS_WEIGHT_INH_F_N", { DYNAPSE_CONFIG_BIAS_C0_PS_WEIGHT_INH_F_N, true, true, true }},
+    {"C0_PS_WEIGHT_EXC_S_N", { DYNAPSE_CONFIG_BIAS_C0_PS_WEIGHT_EXC_S_N, true, true, true }},
+    {"C0_PS_WEIGHT_EXC_F_N", { DYNAPSE_CONFIG_BIAS_C0_PS_WEIGHT_EXC_F_N, true, true, true }},
+    {"C0_IF_RFR_N", { DYNAPSE_CONFIG_BIAS_C0_IF_RFR_N, true, true, true }},
+    {"C0_IF_TAU1_N", { DYNAPSE_CONFIG_BIAS_C0_IF_TAU1_N, false, true, true }},
+    {"C0_IF_AHTAU_N", { DYNAPSE_CONFIG_BIAS_C0_IF_AHTAU_N, true, true, true }},
+    {"C0_IF_CASC_N", { DYNAPSE_CONFIG_BIAS_C0_IF_CASC_N, true, true, true }},
+    {"C0_IF_TAU2_N", { DYNAPSE_CONFIG_BIAS_C0_IF_TAU2_N, true, true, true }},
+    {"C0_IF_BUF_P", { DYNAPSE_CONFIG_BIAS_C0_IF_BUF_P, false, true, true }},
+    {"C0_IF_AHTHR_N", { DYNAPSE_CONFIG_BIAS_C0_IF_AHTHR_N, true, true, true }},
+    {"C0_IF_THR_N", { DYNAPSE_CONFIG_BIAS_C0_IF_THR_N, true, true, true }},
+    {"C0_NPDPIE_THR_S_P", { DYNAPSE_CONFIG_BIAS_C0_NPDPIE_THR_S_P, false, true, true }},
+    {"C0_NPDPIE_THR_F_P", { DYNAPSE_CONFIG_BIAS_C0_NPDPIE_THR_F_P, false, true, true }},
+    {"C0_NPDPII_THR_F_P", { DYNAPSE_CONFIG_BIAS_C0_NPDPII_THR_F_P, false, true, true }},
+    {"C0_NPDPII_THR_S_P", { DYNAPSE_CONFIG_BIAS_C0_NPDPII_THR_S_P, false, true, true }},
+    {"C0_IF_NMDA_N", { DYNAPSE_CONFIG_BIAS_C0_IF_NMDA_N, true, true, true }},
+    {"C0_IF_DC_P", { DYNAPSE_CONFIG_BIAS_C0_IF_DC_P, false, true, true }},
+    {"C0_IF_AHW_P", { DYNAPSE_CONFIG_BIAS_C0_IF_AHW_P, false, true, true }},
+    {"C0_NPDPII_TAU_S_P", { DYNAPSE_CONFIG_BIAS_C0_NPDPII_TAU_S_P, false, true, true }},
+    {"C0_NPDPII_TAU_F_P", { DYNAPSE_CONFIG_BIAS_C0_NPDPII_TAU_F_P, false, true, true }},
+    {"C0_NPDPIE_TAU_F_P", { DYNAPSE_CONFIG_BIAS_C0_NPDPIE_TAU_F_P, false, true, true }},
+    {"C0_NPDPIE_TAU_S_P", { DYNAPSE_CONFIG_BIAS_C0_NPDPIE_TAU_S_P, false, true, true }},
+    {"C0_R2R_P", { DYNAPSE_CONFIG_BIAS_C0_R2R_P, false, true, true }},
+
+    // ------- C1 -------
+    {"C1_PULSE_PWLK_P", { DYNAPSE_CONFIG_BIAS_C1_PULSE_PWLK_P, false, true, true }},
+    {"C1_PS_WEIGHT_INH_S_N", { DYNAPSE_CONFIG_BIAS_C1_PS_WEIGHT_INH_S_N, true, true, true }},
+    {"C1_PS_WEIGHT_INH_F_N", { DYNAPSE_CONFIG_BIAS_C1_PS_WEIGHT_INH_F_N, true, true, true }},
+    {"C1_PS_WEIGHT_EXC_S_N", { DYNAPSE_CONFIG_BIAS_C1_PS_WEIGHT_EXC_S_N, true, true, true }},
+    {"C1_PS_WEIGHT_EXC_F_N", { DYNAPSE_CONFIG_BIAS_C1_PS_WEIGHT_EXC_F_N, true, true, true }},
+    {"C1_IF_RFR_N", { DYNAPSE_CONFIG_BIAS_C1_IF_RFR_N, true, true, true }},
+    {"C1_IF_TAU1_N", { DYNAPSE_CONFIG_BIAS_C1_IF_TAU1_N, false, true, true }},
+    {"C1_IF_AHTAU_N", { DYNAPSE_CONFIG_BIAS_C1_IF_AHTAU_N, true, true, true }},
+    {"C1_IF_CASC_N", { DYNAPSE_CONFIG_BIAS_C1_IF_CASC_N, true, true, true }},
+    {"C1_IF_TAU2_N", { DYNAPSE_CONFIG_BIAS_C1_IF_TAU2_N, true, true, true }},
+    {"C1_IF_BUF_P", { DYNAPSE_CONFIG_BIAS_C1_IF_BUF_P, false, true, true }},
+    {"C1_IF_AHTHR_N", { DYNAPSE_CONFIG_BIAS_C1_IF_AHTHR_N, true, true, true }},
+    {"C1_IF_THR_N", { DYNAPSE_CONFIG_BIAS_C1_IF_THR_N, true, true, true }},
+    {"C1_NPDPIE_THR_S_P", { DYNAPSE_CONFIG_BIAS_C1_NPDPIE_THR_S_P, false, true, true }},
+    {"C1_NPDPIE_THR_F_P", { DYNAPSE_CONFIG_BIAS_C1_NPDPIE_THR_F_P, false, true, true }},
+    {"C1_NPDPII_THR_F_P", { DYNAPSE_CONFIG_BIAS_C1_NPDPII_THR_F_P, false, true, true }},
+    {"C1_NPDPII_THR_S_P", { DYNAPSE_CONFIG_BIAS_C1_NPDPII_THR_S_P, false, true, true }},
+    {"C1_IF_NMDA_N", { DYNAPSE_CONFIG_BIAS_C1_IF_NMDA_N, true, true, true }},
+    {"C1_IF_DC_P", { DYNAPSE_CONFIG_BIAS_C1_IF_DC_P, false, true, true }},
+    {"C1_IF_AHW_P", { DYNAPSE_CONFIG_BIAS_C1_IF_AHW_P, false, true, true }},
+    {"C1_NPDPII_TAU_S_P", { DYNAPSE_CONFIG_BIAS_C1_NPDPII_TAU_S_P, false, true, true }},
+    {"C1_NPDPII_TAU_F_P", { DYNAPSE_CONFIG_BIAS_C1_NPDPII_TAU_F_P, false, true, true }},
+    {"C1_NPDPIE_TAU_F_P", { DYNAPSE_CONFIG_BIAS_C1_NPDPIE_TAU_F_P, false, true, true }},
+    {"C1_NPDPIE_TAU_S_P", { DYNAPSE_CONFIG_BIAS_C1_NPDPIE_TAU_S_P, false, true, true }},
+    {"C1_R2R_P", { DYNAPSE_CONFIG_BIAS_C1_R2R_P, false, true, true }},
+
+    // ------- C2 -------
+    {"C2_PULSE_PWLK_P", { DYNAPSE_CONFIG_BIAS_C2_PULSE_PWLK_P, false, true, true }},
+    {"C2_PS_WEIGHT_INH_S_N", { DYNAPSE_CONFIG_BIAS_C2_PS_WEIGHT_INH_S_N, true, true, true }},
+    {"C2_PS_WEIGHT_INH_F_N", { DYNAPSE_CONFIG_BIAS_C2_PS_WEIGHT_INH_F_N, true, true, true }},
+    {"C2_PS_WEIGHT_EXC_S_N", { DYNAPSE_CONFIG_BIAS_C2_PS_WEIGHT_EXC_S_N, true, true, true }},
+    {"C2_PS_WEIGHT_EXC_F_N", { DYNAPSE_CONFIG_BIAS_C2_PS_WEIGHT_EXC_F_N, true, true, true }},
+    {"C2_IF_RFR_N", { DYNAPSE_CONFIG_BIAS_C2_IF_RFR_N, true, true, true }},
+    {"C2_IF_TAU1_N", { DYNAPSE_CONFIG_BIAS_C2_IF_TAU1_N, false, true, true }},
+    {"C2_IF_AHTAU_N", { DYNAPSE_CONFIG_BIAS_C2_IF_AHTAU_N, true, true, true }},
+    {"C2_IF_CASC_N", { DYNAPSE_CONFIG_BIAS_C2_IF_CASC_N, true, true, true }},
+    {"C2_IF_TAU2_N", { DYNAPSE_CONFIG_BIAS_C2_IF_TAU2_N, true, true, true }},
+    {"C2_IF_BUF_P", { DYNAPSE_CONFIG_BIAS_C2_IF_BUF_P, false, true, true }},
+    {"C2_IF_AHTHR_N", { DYNAPSE_CONFIG_BIAS_C2_IF_AHTHR_N, true, true, true }},
+    {"C2_IF_THR_N", { DYNAPSE_CONFIG_BIAS_C2_IF_THR_N, true, true, true }},
+    {"C2_NPDPIE_THR_S_P", { DYNAPSE_CONFIG_BIAS_C2_NPDPIE_THR_S_P, false, true, true }},
+    {"C2_NPDPIE_THR_F_P", { DYNAPSE_CONFIG_BIAS_C2_NPDPIE_THR_F_P, false, true, true }},
+    {"C2_NPDPII_THR_F_P", { DYNAPSE_CONFIG_BIAS_C2_NPDPII_THR_F_P, false, true, true }},
+    {"C2_NPDPII_THR_S_P", { DYNAPSE_CONFIG_BIAS_C2_NPDPII_THR_S_P, false, true, true }},
+    {"C2_IF_NMDA_N", { DYNAPSE_CONFIG_BIAS_C2_IF_NMDA_N, true, true, true }},
+    {"C2_IF_DC_P", { DYNAPSE_CONFIG_BIAS_C2_IF_DC_P, false, true, true }},
+    {"C2_IF_AHW_P", { DYNAPSE_CONFIG_BIAS_C2_IF_AHW_P, false, true, true }},
+    {"C2_NPDPII_TAU_S_P", { DYNAPSE_CONFIG_BIAS_C2_NPDPII_TAU_S_P, false, true, true }},
+    {"C2_NPDPII_TAU_F_P", { DYNAPSE_CONFIG_BIAS_C2_NPDPII_TAU_F_P, false, true, true }},
+    {"C2_NPDPIE_TAU_F_P", { DYNAPSE_CONFIG_BIAS_C2_NPDPIE_TAU_F_P, false, true, true }},
+    {"C2_NPDPIE_TAU_S_P", { DYNAPSE_CONFIG_BIAS_C2_NPDPIE_TAU_S_P, false, true, true }},
+    {"C2_R2R_P", { DYNAPSE_CONFIG_BIAS_C2_R2R_P, false, true, true }},
+
+    // ------- C3 -------
+    {"C3_PULSE_PWLK_P", { DYNAPSE_CONFIG_BIAS_C3_PULSE_PWLK_P, false, true, true }},
+    {"C3_PS_WEIGHT_INH_S_N", { DYNAPSE_CONFIG_BIAS_C3_PS_WEIGHT_INH_S_N, true, true, true }},
+    {"C3_PS_WEIGHT_INH_F_N", { DYNAPSE_CONFIG_BIAS_C3_PS_WEIGHT_INH_F_N, true, true, true }},
+    {"C3_PS_WEIGHT_EXC_S_N", { DYNAPSE_CONFIG_BIAS_C3_PS_WEIGHT_EXC_S_N, true, true, true }},
+    {"C3_PS_WEIGHT_EXC_F_N", { DYNAPSE_CONFIG_BIAS_C3_PS_WEIGHT_EXC_F_N, true, true, true }},
+    {"C3_IF_RFR_N", { DYNAPSE_CONFIG_BIAS_C3_IF_RFR_N, true, true, true }},
+    {"C3_IF_TAU1_N", { DYNAPSE_CONFIG_BIAS_C3_IF_TAU1_N, false, true, true }},
+    {"C3_IF_AHTAU_N", { DYNAPSE_CONFIG_BIAS_C3_IF_AHTAU_N, true, true, true }},
+    {"C3_IF_CASC_N", { DYNAPSE_CONFIG_BIAS_C3_IF_CASC_N, true, true, true }},
+    {"C3_IF_TAU2_N", { DYNAPSE_CONFIG_BIAS_C3_IF_TAU2_N, true, true, true }},
+    {"C3_IF_BUF_P", { DYNAPSE_CONFIG_BIAS_C3_IF_BUF_P, false, true, true }},
+    {"C3_IF_AHTHR_N", { DYNAPSE_CONFIG_BIAS_C3_IF_AHTHR_N, true, true, true }},
+    {"C3_IF_THR_N", { DYNAPSE_CONFIG_BIAS_C3_IF_THR_N, true, true, true }},
+    {"C3_NPDPIE_THR_S_P", { DYNAPSE_CONFIG_BIAS_C3_NPDPIE_THR_S_P, false, true, true }},
+    {"C3_NPDPIE_THR_F_P", { DYNAPSE_CONFIG_BIAS_C3_NPDPIE_THR_F_P, false, true, true }},
+    {"C3_NPDPII_THR_F_P", { DYNAPSE_CONFIG_BIAS_C3_NPDPII_THR_F_P, false, true, true }},
+    {"C3_NPDPII_THR_S_P", { DYNAPSE_CONFIG_BIAS_C3_NPDPII_THR_S_P, false, true, true }},
+    {"C3_IF_NMDA_N", { DYNAPSE_CONFIG_BIAS_C3_IF_NMDA_N, true, true, true }},
+    {"C3_IF_DC_P", { DYNAPSE_CONFIG_BIAS_C3_IF_DC_P, false, true, true }},
+    {"C3_IF_AHW_P", { DYNAPSE_CONFIG_BIAS_C3_IF_AHW_P, false, true, true }},
+    {"C3_NPDPII_TAU_S_P", { DYNAPSE_CONFIG_BIAS_C3_NPDPII_TAU_S_P, false, true, true }},
+    {"C3_NPDPII_TAU_F_P", { DYNAPSE_CONFIG_BIAS_C3_NPDPII_TAU_F_P, false, true, true }},
+    {"C3_NPDPIE_TAU_F_P", { DYNAPSE_CONFIG_BIAS_C3_NPDPIE_TAU_F_P, false, true, true }},
+    {"C3_NPDPIE_TAU_S_P", { DYNAPSE_CONFIG_BIAS_C3_NPDPIE_TAU_S_P, false, true, true }},
+    {"C3_R2R_P", { DYNAPSE_CONFIG_BIAS_C3_R2R_P, false, true, true }},
+
+    // ------- U + D -------
+    {"U_BUFFER", { DYNAPSE_CONFIG_BIAS_U_BUFFER, false, true, true }},
+    {"U_SSP", { DYNAPSE_CONFIG_BIAS_U_SSP, false, true, true }},
+    {"U_SSN", { DYNAPSE_CONFIG_BIAS_U_SSN, true, true, true }},
+    {"D_BUFFER", { DYNAPSE_CONFIG_BIAS_D_BUFFER, false, true, true }},
+    {"D_SSP", { DYNAPSE_CONFIG_BIAS_D_SSP, false, true, true }},
+    {"D_SSN", { DYNAPSE_CONFIG_BIAS_D_SSN, true, true, true }}
+
+};
 
 static void globalShutdownSignalHandler(int signal) {
 	if (signal == SIGTERM || signal == SIGINT) {
@@ -129,15 +276,88 @@ void configHandler(caerDeviceHandle handle) {
             std::istringstream iss(command);
             std::string token;
             iss >> token;
+            //std::cout << "[DEBUG] token '" << token << "'" << std::endl;
             if (token == "LOAD") {
                 std::string filename;
                 iss >> filename;
                 std::string path = "data/" + filename;
                 std::cout << "Reconfiguring with bias file: " << path << std::endl;
                 configureDevice(handle, path);
+            } else if (token == "SET") {
+                int core_id;
+                std::string bias_base_name;
+                int coarse, fine;
+                iss >> core_id >> bias_base_name >> coarse >> fine;
+
+                std::ostringstream full_bias_name;
+                if (bias_base_name.rfind("C", 0) != 0 && bias_base_name != "U_BUFFER" && bias_base_name != "D_BUFFER" && bias_base_name != "U_SSP" && bias_base_name != "U_SSN" && bias_base_name != "D_SSP" && bias_base_name != "D_SSN") {
+                    // Core-specific: auto-prefix with "C{core_id}_"
+                    full_bias_name << "C" << core_id << "_" << bias_base_name;
+                } else {
+                    // U or D biases → leave as is
+                    full_bias_name << bias_base_name;
+                }
+
+                std::string bias_name = full_bias_name.str();
+
+                std::cout << "Setting bias: core " << core_id << " bias " << bias_name
+                          << " coarse " << coarse << " fine " << fine << std::endl;
+
+                auto it = biasFlagMap.find(bias_name);
+                if (it == biasFlagMap.end()) {
+                    std::cerr << "Unknown bias name: " << bias_name << std::endl;
+                    continue;
+                }
+
+                // Compute correct bias param based on core
+                uint32_t param = it->second.param;
+                
+                struct caer_bias_dynapse biasStruct;
+                biasStruct.biasAddress = param; // Already correct!
+                biasStruct.coarseValue = coarse;
+                biasStruct.fineValue = fine;
+                biasStruct.enabled = true;
+                biasStruct.sexN = it->second.sexN;
+                biasStruct.typeNormal = it->second.typeNormal;
+                biasStruct.biasHigh = it->second.biasHigh;
+
+                uint32_t bias_value = caerBiasDynapseGenerate(biasStruct);
+                caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_CONTENT, bias_value);
+
+                std::cout << "Bias applied." << std::endl;
+            } else if (token == "PARAM_SET") {
+                std::string moduleStr, paramStr;
+                int value;
+                iss >> moduleStr >> paramStr >> value;
+
+                uint8_t module = 0;
+                if (moduleStr == "CHIP") module = DYNAPSE_CONFIG_CHIP;
+                else if (moduleStr == "MUX") module = DYNAPSE_CONFIG_MUX;
+                else if (moduleStr == "AER") module = DYNAPSE_CONFIG_AER;
+                else {
+                    std::cerr << "Unknown module: " << moduleStr << std::endl;
+                    continue;
+                }
+
+                auto it = parameterMap.find(paramStr);
+                if (it == parameterMap.end()) {
+                    std::cerr << "Unknown param: " << paramStr << std::endl;
+                    continue;
+                }
+
+                std::cout << "Setting PARAM: " << moduleStr << " " << paramStr
+                          << " = " << value << std::endl;
+
+                caerDeviceConfigSet(handle, module, it->second, value);
+            } else if (token == "HELP") {
+                std::cout << "Available biases:" << std::endl;
+                for (const auto& entry : biasFlagMap) {
+                    std::cout << "  " << entry.first << std::endl;
+                }
             } else {
-                std::cerr << "Unknown command: " << command << std::endl;
+                std::cerr << "Unknown command: " << token << std::endl;
             }
+
         }
     }
 }
@@ -180,7 +400,7 @@ void readSpikes(caerDeviceHandle handle) {
 					char buffer[128];
 					snprintf(buffer, sizeof(buffer), "%llu %llu %llu %llu\n", ts, neuronId, sourceCoreId, chipId);
 					send(clientSocket, buffer, strlen(buffer), 0);
-					printf("Sent spike: %s", buffer);  
+					//printf("Sent spike: %s", buffer);  
 				CAER_SPIKE_ITERATOR_ALL_END
 			}
 		}
