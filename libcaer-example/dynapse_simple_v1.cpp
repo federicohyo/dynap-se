@@ -56,6 +56,7 @@ static inline uint8_t coarseValueForward(uint8_t coarseRev) {
 std::map<std::string, uint32_t> parameterMap = {
     // CHIP
     {"CHIP_RUN", DYNAPSE_CONFIG_CHIP_RUN},
+    {"CHIP_ID", DYNAPSE_CONFIG_CHIP_ID},   // <--- ADD THIS LINE!
     {"CHIP_REQ_DELAY", DYNAPSE_CONFIG_CHIP_REQ_DELAY},
     {"CHIP_REQ_EXTENSION", DYNAPSE_CONFIG_CHIP_REQ_EXTENSION},
 
@@ -69,7 +70,6 @@ std::map<std::string, uint32_t> parameterMap = {
     {"AER_ACK_DELAY", DYNAPSE_CONFIG_AER_ACK_DELAY},
     {"AER_ACK_EXTENSION", DYNAPSE_CONFIG_AER_ACK_EXTENSION},
     {"AER_WAIT_ON_TRANSFER_STALL", DYNAPSE_CONFIG_AER_WAIT_ON_TRANSFER_STALL},
-
 };
 
 std::map<std::string, BiasFlags> biasFlagMap = {
@@ -318,15 +318,28 @@ void saveBiases(const std::string &filename) {
 }
 
 
-
 bool configureDevice(caerDeviceHandle handle, const std::string &biasFile) {
 	printf("Applying biases from %s...\n", biasFile.c_str());
 	
+
 	if (!loadBiases(handle, biasFile)) {
 		return false;
 	}
-
+	
 	// Enable neuron monitors (example: neuron 0 from all cores)
+	caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
+	for (int core = 0; core < 4; core++) {
+		caerDeviceConfigSet(handle, DYNAPSE_CONFIG_MONITOR_NEU, core, 0);
+	}
+	caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U1);
+	for (int core = 0; core < 4; core++) {
+		caerDeviceConfigSet(handle, DYNAPSE_CONFIG_MONITOR_NEU, core, 0);
+	}
+	caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
+	for (int core = 0; core < 4; core++) {
+		caerDeviceConfigSet(handle, DYNAPSE_CONFIG_MONITOR_NEU, core, 0);
+	}
+	caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U3);
 	for (int core = 0; core < 4; core++) {
 		caerDeviceConfigSet(handle, DYNAPSE_CONFIG_MONITOR_NEU, core, 0);
 	}
@@ -454,6 +467,15 @@ void configHandler(caerDeviceHandle handle) {
                           << " = " << value << std::endl;
 
                 caerDeviceConfigSet(handle, module, it->second, value);
+            } else if (token == "MONITOR_SET") {
+                int monitorId, coreId, neuronId;
+                iss >> monitorId >> coreId >> neuronId;
+
+                std::cout << "Setting MONITOR_NEU monitor=" << monitorId
+                          << " core=" << coreId
+                          << " neuron=" << neuronId << std::endl;
+
+                caerDeviceConfigSet(handle, DYNAPSE_CONFIG_MONITOR_NEU, coreId, neuronId);
             } else if (token == "HELP") {
                 std::cout << "Available biases:" << std::endl;
                 for (const auto& entry : biasFlagMap) {
@@ -537,6 +559,7 @@ int main() {
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MUX,
 	                    DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE, true);
 
+    
 	// Apply initial silent biases
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_RUN, true);
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN, true);
@@ -544,20 +567,103 @@ int main() {
 	if (!configureDevice(usb_handle, DEFAULTBIASES)) {
 		caerDeviceClose(&usb_handle);
 		return EXIT_FAILURE;
-	}
-
+    }
+	
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_RUN, false);
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN, false);
 
+    caerDeviceConfigSet(usb_handle, CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
+
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_RUN, true);
+
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN, true);
+
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
+    // force chip to be enable even if aer is off
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MUX, DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE, true);
+    
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U1);
+    // force chip to be enable even if aer is off
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MUX, DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE, true);
+
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
+    // force chip to be enable even if aer is off
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MUX, DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE, true);
+
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U3);
+    // force chip to be enable even if aer is off
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MUX, DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE, true);
+  
+      printf("Configuring sram content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U0, 0);
+    printf(" Done.\n");
+
+    printf("Configuring cam content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U0, 0);
+    printf(" Done.\n");
+
+      printf("Configuring sram content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U1);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U1, 0);
+    printf(" Done.\n");
+
+    printf("Configuring cam content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U1);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U1, 0);
+    printf(" Done.\n");
+ 
+  
+    printf("Configuring sram content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U2, 0);
+    printf(" Done.\n");
+
+    printf("Configuring cam content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U2, 0);
+    printf(" Done.\n");
+
+      printf("Configuring sram content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U3);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U3, 0);
+    printf(" Done.\n");
+
+    printf("Configuring cam content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U3);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U3, 0);
+    printf(" Done.\n");
+            
 	// Reconfigure with low power biases before monitoring
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_RUN, true);
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN, true);
 
+
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
 	if (!configureDevice(usb_handle, LOWPOWERBIASES)) {
 		caerDeviceClose(&usb_handle);
 		return EXIT_FAILURE;
 	}
 
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U1);
+	if (!configureDevice(usb_handle, LOWPOWERBIASES)) {
+		caerDeviceClose(&usb_handle);
+		return EXIT_FAILURE;
+	}
+	
+	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
+	if (!configureDevice(usb_handle, LOWPOWERBIASES)) {
+		caerDeviceClose(&usb_handle);
+		return EXIT_FAILURE;
+	}
+	
+	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U3);
+	if (!configureDevice(usb_handle, LOWPOWERBIASES)) {
+		caerDeviceClose(&usb_handle);
+		return EXIT_FAILURE;
+	}
+	
 	setupConfigSocketServer();   // Accept config client FIRST
 	setupSocketServer();         // Then accept GUI stream
 	
