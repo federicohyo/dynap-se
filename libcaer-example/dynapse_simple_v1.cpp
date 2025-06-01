@@ -476,7 +476,59 @@ void configHandler(caerDeviceHandle handle) {
                           << " neuron=" << neuronId << std::endl;
 
                 caerDeviceConfigSet(handle, DYNAPSE_CONFIG_MONITOR_NEU, coreId, neuronId);
-            } else if (token == "HELP") {
+            } else if (token == "CAM_SET") {
+                int inputNeuron, targetNeuron, camId, synType;
+                iss >> inputNeuron >> targetNeuron >> camId >> synType;
+
+                std::cout << "Writing CAM: InputNeuron=" << inputNeuron
+                          << " TargetNeuron=" << targetNeuron
+                          << " CAM_ID=" << camId
+                          << " SynapseType=" << synType << std::endl;
+
+                caerDynapseWriteCam(handle,
+                    static_cast<uint16_t>(inputNeuron),
+                    static_cast<uint16_t>(targetNeuron),
+                    static_cast<uint8_t>(camId),
+                    static_cast<uint8_t>(synType));
+            }else if (token == "ROUTE_SET") {
+                int chip, core, neuronCore, sramId, virtCore, sx, dx, sy, dy, destCore;
+                iss >> chip >> core >> neuronCore >> sramId >> virtCore >> sx >> dx >> sy >> dy >> destCore;
+
+                std::cout << "ROUTE_SET: CHIP=" << chip
+                          << " CORE=" << core
+                          << " NEURON=" << neuronCore
+                          << " SRAM=" << sramId
+                          << " VirtCore=" << virtCore
+                          << " SX=" << sx << " DX=" << dx
+                          << " SY=" << sy << " DY=" << dy
+                          << " DEST=" << destCore << std::endl;
+
+                // Set CHIP_ID first:
+                caerDeviceConfigSet(handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, chip);
+
+                // Compute global neuronId:
+                uint16_t neuronId = caerDynapseCoreAddrToNeuronId(core, neuronCore);
+
+                // Write SRAM:
+                uint32_t sramWord = caerDynapseGenerateSramBits(
+                    neuronId,
+                    static_cast<uint8_t>(sramId),
+                    static_cast<uint8_t>(virtCore),
+                    static_cast<bool>(sx),
+                    static_cast<uint8_t>(dx),
+                    static_cast<bool>(sy),
+                    static_cast<uint8_t>(dy),
+                    static_cast<uint8_t>(destCore)
+                );
+
+                // Now perform write:
+                caerDeviceConfigSet(handle, DYNAPSE_CONFIG_SRAM, DYNAPSE_CONFIG_SRAM_WRITEDATA, sramWord);
+                caerDeviceConfigSet(handle, DYNAPSE_CONFIG_SRAM, DYNAPSE_CONFIG_SRAM_RWCOMMAND, DYNAPSE_CONFIG_SRAM_WRITE);
+                caerDeviceConfigSet(handle, DYNAPSE_CONFIG_SRAM, DYNAPSE_CONFIG_SRAM_ADDRESS,
+                                    neuronId * 4 + sramId); // Each neuron has 4 SRAMs
+
+                std::cout << "SRAM write completed." << std::endl;
+            }else if (token == "HELP") {
                 std::cout << "Available biases:" << std::endl;
                 for (const auto& entry : biasFlagMap) {
                     std::cout << "  " << entry.first << std::endl;
@@ -488,7 +540,6 @@ void configHandler(caerDeviceHandle handle) {
         }
     }
 }
-
 
 
 void closeSockets() {
@@ -559,7 +610,8 @@ int main() {
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MUX,
 	                    DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE, true);
 
-    
+     caerDeviceConfigSet(usb_handle, CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
+        
 	// Apply initial silent biases
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_RUN, true);
 	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN, true);
@@ -569,14 +621,11 @@ int main() {
 		return EXIT_FAILURE;
     }
 	
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_RUN, false);
-	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN, false);
+	//caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_RUN, false);
+	//caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN, false);
 
-    caerDeviceConfigSet(usb_handle, CAER_HOST_CONFIG_DATAEXCHANGE, CAER_HOST_CONFIG_DATAEXCHANGE_BLOCKING, true);
-
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_RUN, true);
-
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN, true);
+    //caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_RUN, true);
+    //caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_AER, DYNAPSE_CONFIG_AER_RUN, true);
 
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
     // force chip to be enable even if aer is off
@@ -594,42 +643,52 @@ int main() {
     // force chip to be enable even if aer is off
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_MUX, DYNAPSE_CONFIG_MUX_FORCE_CHIP_BIAS_ENABLE, true);
   
-      printf("Configuring sram content...");
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U0, 0);
-    printf(" Done.\n");
-
-    printf("Configuring cam content...");
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U0, 0);
-    printf(" Done.\n");
-
-      printf("Configuring sram content...");
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U1);
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U1, 0);
-    printf(" Done.\n");
-
-    printf("Configuring cam content...");
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U1);
-    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U1, 0);
-    printf(" Done.\n");
- 
   
+  
+	// Clear all SRAM.
+	/*printf("Clearing SRAM SRAM U0 ...\n");
+	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
+	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM_EMPTY, 0, 0);
+	printf("Clearing SRAM SRAM U1 ...\n");
+	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U1);
+	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM_EMPTY, 0, 0);
+	printf("Clearing SRAM SRAM U2 ...\n");
+	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
+	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM_EMPTY, 0, 0);
+	printf("Clearing SRAM SRAM U3 ...\n");
+	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U3);
+	caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM_EMPTY, 0, 0);*/
+
+
+    // Setup SRAM for USB monitoring of spike events.
+    printf("Configuring sram content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U0, 0);
+    printf(" Done.\n");
+    printf("Configuring cam content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U0);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U0, 0);
+    printf(" Done.\n");
+    printf("Configuring sram content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U1);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U1, 0);
+    printf(" Done.\n");
+    printf("Configuring cam content...");
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U1);
+    caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U1, 0);
+    printf(" Done.\n");
     printf("Configuring sram content...");
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U2, 0);
     printf(" Done.\n");
-
     printf("Configuring cam content...");
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U2);
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U2, 0);
     printf(" Done.\n");
-
       printf("Configuring sram content...");
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U3);
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U3, 0);
     printf(" Done.\n");
-
     printf("Configuring cam content...");
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_CHIP, DYNAPSE_CONFIG_CHIP_ID, DYNAPSE_CONFIG_DYNAPSE_U3);
     caerDeviceConfigSet(usb_handle, DYNAPSE_CONFIG_DEFAULT_SRAM, DYNAPSE_CONFIG_DYNAPSE_U3, 0);
@@ -664,6 +723,7 @@ int main() {
 		return EXIT_FAILURE;
 	}
 	
+
 	setupConfigSocketServer();   // Accept config client FIRST
 	setupSocketServer();         // Then accept GUI stream
 	
